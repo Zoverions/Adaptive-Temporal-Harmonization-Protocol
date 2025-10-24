@@ -1,0 +1,5 @@
+{
+  "name": "Adaptive Temporal Harmonization Protocol Dashboard",
+  "description": "An interactive dashboard visualizing the Adaptive Temporal Harmonization Protocol (ATHP), a proposed augmentation to mitigate Rhythmic Spoofing and temporal mismatch in AI-human cognitive symbiosis.",
+  "requestFramePermissions": []
+}
