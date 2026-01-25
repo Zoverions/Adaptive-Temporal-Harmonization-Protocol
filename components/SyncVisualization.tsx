@@ -1,5 +1,6 @@
 
 import React from 'react';
+import './SyncVisualization.css';
 
 const BrainIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -16,22 +17,6 @@ const ChipIcon: React.FC<{ className?: string }> = ({ className }) => (
 const SyncVisualization: React.FC = () => {
   return (
     <div className="relative flex flex-col items-center justify-center bg-slate-900/70 p-6 rounded-lg border border-slate-700 h-full min-h-[300px] overflow-hidden">
-      <style>{`
-        @keyframes pulse-wave {
-          0%, 100% { stroke-dashoffset: 0; }
-          50% { stroke-dashoffset: 100; }
-        }
-        .animate-wave {
-          animation: pulse-wave 4s ease-in-out infinite;
-        }
-        @keyframes glow {
-          0%, 100% { filter: drop-shadow(0 0 2px #67e8f9); }
-          50% { filter: drop-shadow(0 0 5px #67e8f9); }
-        }
-        .icon-glow {
-          animation: glow 3s ease-in-out infinite;
-        }
-      `}</style>
       <div className="flex justify-between w-full max-w-sm mb-4">
         <div className="flex flex-col items-center">
           <BrainIcon className="w-16 h-16 text-cyan-400 icon-glow" />
