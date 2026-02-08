@@ -9,18 +9,28 @@ interface ProtocolCardProps {
 
 const ProtocolCard: React.FC<ProtocolCardProps> = ({ protocol }) => {
   const [explanation, setExplanation] = useState<string>('');
+  const [isVisible, setIsVisible] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const handleExplain = useCallback(() => {
-    if (explanation) {
-      setExplanation(''); // Toggle to hide
+    if (isVisible) {
+      setIsVisible(false); // Toggle to hide
       return;
     }
+
+    if (explanation) {
+      setIsVisible(true); // Show cached explanation
+      return;
+    }
+
     setIsLoading(true);
     explainConcept(protocol.title, protocol.description)
-      .then(setExplanation)
+      .then((res) => {
+        setExplanation(res);
+        setIsVisible(true);
+      })
       .finally(() => setIsLoading(false));
-  }, [protocol.title, protocol.description, explanation]);
+  }, [protocol.title, protocol.description, explanation, isVisible]);
 
   return (
     <div className="bg-slate-800/50 p-6 rounded-lg border border-slate-700 flex flex-col h-full group hover:border-violet-500/70 transition-all duration-300">
@@ -36,9 +46,9 @@ const ProtocolCard: React.FC<ProtocolCardProps> = ({ protocol }) => {
           disabled={isLoading}
           className="w-full text-sm font-semibold text-cyan-300 bg-cyan-900/50 hover:bg-cyan-800/50 border border-cyan-700/50 rounded-md px-4 py-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isLoading ? 'Thinking...' : (explanation ? 'Hide AI Explanation' : 'Explain with AI')}
+          {isLoading ? 'Thinking...' : (isVisible ? 'Hide AI Explanation' : 'Explain with AI')}
         </button>
-        {explanation && !isLoading && (
+        {isVisible && explanation && !isLoading && (
           <div className="mt-4 p-3 bg-slate-900/70 rounded-md border border-slate-600">
             <p className="text-sm text-gray-200">{explanation}</p>
           </div>
