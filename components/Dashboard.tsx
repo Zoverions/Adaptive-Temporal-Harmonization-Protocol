@@ -4,10 +4,16 @@ import { SYNC_ARCHITECTURE, SPOOFING_MITIGATION, COGNITIVE_PRINCIPLES } from '..
 import ProtocolCard from './ProtocolCard';
 import SyncVisualization from './SyncVisualization';
 import SectionTitle from './SectionTitle';
+import PilotInterface from './Pilot/PilotInterface';
 
 const Dashboard: React.FC = () => {
   return (
     <div className="space-y-12">
+
+      {/* Live Pilot Interface */}
+      <section>
+        <PilotInterface />
+      </section>
       
       {/* Synchronization Architecture Section */}
       <section>
