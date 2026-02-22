@@ -28,6 +28,14 @@ class GCAOptimizer:
         with open(REGISTRY_PATH, 'r') as f:
             self.registry = json.load(f)
 
+        # Pre-compute skill matrix for vectorized search
+        self.skill_names = list(self.registry.keys())
+        if self.skill_names:
+            vectors = [self.registry[name]["vector_coeffs"] for name in self.skill_names]
+            self.skill_matrix = torch.tensor(vectors, device=DEVICE)
+        else:
+            self.skill_matrix = None
+
     def get_prompt_geometry(self, prompt):
         """Projects the user prompt onto the Universal Basis."""
         inputs = self.tokenizer(prompt, return_tensors="pt").to(DEVICE)
@@ -60,15 +68,17 @@ class GCAOptimizer:
 
         print(f"[🧭] Routing Intent for: '{prompt[:30]}...'")
 
-        for name, data in self.registry.items():
-            skill_coeffs = torch.tensor(data["vector_coeffs"], device=DEVICE)
+        if self.skill_matrix is not None:
+            # Vectorized Cosine Similarity: (N_skills, Dim) @ (Dim) -> (N_skills)
+            scores = torch.mv(self.skill_matrix, prompt_vec)
 
-            # Cosine Similarity
-            score = torch.dot(prompt_vec, skill_coeffs).item()
+            # Find the best match
+            best_idx = torch.argmax(scores).item()
+            max_score = scores[best_idx].item()
 
-            if score > best_score:
-                best_score = score
-                best_skill = name
+            if max_score > best_score:
+                best_score = max_score
+                best_skill = self.skill_names[best_idx]
 
         if best_skill != "NONE":
             print(f"    -> Matched '{best_skill}' (Confidence: {best_score:.2f})")
