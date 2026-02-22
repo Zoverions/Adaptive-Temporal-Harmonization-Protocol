@@ -89,25 +89,44 @@ class GCAOptimizer:
         inputs = self.tokenizer(prompt, return_tensors="pt").to(DEVICE)
         skill_vec = skill_vec.to(DEVICE)
 
-        for strength in candidates:
-            # Inject
-            def steer_hook(module, input, output):
-                output[0][:, :, :] += skill_vec * strength
-                return output
+        # Batch inputs
+        batch_size = len(candidates)
+        # Duplicate input_ids and attention_mask
+        input_ids = inputs["input_ids"].repeat(batch_size, 1)
+        attention_mask = inputs["attention_mask"].repeat(batch_size, 1)
 
-            handle = self.model.transformer.h[self.layer_idx].register_forward_hook(steer_hook)
+        # Prepare steering tensor
+        # candidates -> (batch, 1, 1)
+        strength_tensor = torch.tensor(candidates, device=DEVICE).view(batch_size, 1, 1)
+        # skill_vec -> (1, 1, hidden)
+        skill_vec_view = skill_vec.view(1, 1, -1)
+        # steering -> (batch, 1, hidden)
+        steering_tensor = skill_vec_view * strength_tensor
 
-            # Fast generation probe (20 tokens)
+        # Inject
+        def steer_hook(module, input, output):
+            # output[0]: (batch, seq, hidden)
+            # steering_tensor broadcasts over seq
+            output[0][:, :, :] += steering_tensor
+            return output
+
+        handle = self.model.transformer.h[self.layer_idx].register_forward_hook(steer_hook)
+
+        # Fast generation probe (20 tokens)
+        try:
             out = self.model.generate(
-                **inputs,
+                input_ids=input_ids,
+                attention_mask=attention_mask,
                 max_new_tokens=20,
                 do_sample=True,
                 temperature=0.7,
                 pad_token_id=self.tokenizer.eos_token_id
             )
-
+        finally:
             handle.remove()
-            text = self.tokenizer.decode(out[0], skip_special_tokens=True)
+
+        for i, strength in enumerate(candidates):
+            text = self.tokenizer.decode(out[i], skip_special_tokens=True)
 
             # Simple Repetition Check (compression ratio)
             # If "a b a b a b", ratio is high.
