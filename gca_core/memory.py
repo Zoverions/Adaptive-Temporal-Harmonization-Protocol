@@ -7,7 +7,18 @@ REGISTRY_PATH = "skill_registry.json"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 class IsotropicMemory:
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(IsotropicMemory, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self):
+        if self._initialized:
+            return
+
         try:
             self.basis = torch.load(BASIS_PATH, map_location=DEVICE)
         except:
@@ -29,6 +40,7 @@ class IsotropicMemory:
             self.skill_matrix = torch.tensor(vectors, device=DEVICE) # (N, 16)
         else:
              self.skill_matrix = torch.empty((0, 16), device=DEVICE)
+        self._initialized = True
 
     def get_skill_vector(self, skill_name):
         if skill_name in self.registry:
