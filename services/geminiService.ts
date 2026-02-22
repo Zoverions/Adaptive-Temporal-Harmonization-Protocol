@@ -11,6 +11,8 @@ if (!API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: API_KEY || "dummy_key" });
 
+const pilotCache = new Map<string, PilotAnalysis>();
+
 export const explainConcept = async (conceptTitle: string, conceptDescription: string): Promise<string> => {
   if (!API_KEY) {
     return "AI explanation is unavailable. Please ensure the API key is configured.";
@@ -51,6 +53,10 @@ export const runPilotAnalysis = async (userPrompt: string): Promise<PilotAnalysi
     };
   }
 
+  if (pilotCache.has(userPrompt)) {
+    return pilotCache.get(userPrompt)!;
+  }
+
   try {
     const prompt = `
       You are the GCA Pilot, an advanced AI system with a Moral Kernel.
@@ -86,6 +92,7 @@ export const runPilotAnalysis = async (userPrompt: string): Promise<PilotAnalysi
     }
 
     const analysis = JSON.parse(text) as PilotAnalysis;
+    pilotCache.set(userPrompt, analysis);
     return analysis;
 
   } catch (error) {
