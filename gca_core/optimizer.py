@@ -72,41 +72,62 @@ class GCAOptimizer:
 
     def auto_tune(self, prompt, skill_vec):
         """
-        Tests strength levels (2.0 to 8.0).
+        Tests strength levels (2.0 to 8.0) in parallel using batching.
         Stops before the model starts looping (Repetition Check).
         """
         # Renamed from auto_tune_strength to auto_tune to match gca_agent_final.py
         print(f"[🔧] Auto-Tuning Strength...")
         candidates = [2.0, 4.0, 6.0, 8.0]
+        batch_size = len(candidates)
         best_strength = 2.0
 
         inputs = self.gb.tokenizer(prompt, return_tensors="pt").to(DEVICE)
         skill_vec = skill_vec.to(DEVICE)
 
-        for strength in candidates:
-            # Inject
-            def steer_hook(module, input, output):
-                output[0][:, :, :] += skill_vec * strength
-                return output
+        # Batch inputs
+        # Repeat input_ids and attention_mask for each candidate strength
+        input_ids = inputs["input_ids"].repeat(batch_size, 1)
+        attention_mask = inputs["attention_mask"].repeat(batch_size, 1)
 
-            handle = self.gb.model.transformer.h[self.layer_idx].register_forward_hook(steer_hook)
+        # Prepare steering tensor for batch injection
+        # strengths: (batch_size, 1, 1)
+        strengths = torch.tensor(candidates, device=DEVICE, dtype=skill_vec.dtype).view(batch_size, 1, 1)
+        # skill_vec: (hidden_size) -> (1, 1, hidden_size)
+        skill_vec_reshaped = skill_vec.view(1, 1, -1)
+        # steering_tensor: (batch_size, 1, hidden_size) - ready for broadcasting over seq_len
+        steering_tensor = strengths * skill_vec_reshaped
 
-            # Fast generation probe (20 tokens)
+        # Inject
+        def steer_hook(module, input, output):
+            # output[0] shape: (batch_size, seq_len, hidden_size)
+            # Use in-place addition on the tensor reference to avoid tuple assignment error
+            output[0].add_(steering_tensor)
+            return output
+
+        handle = self.gb.model.transformer.h[self.layer_idx].register_forward_hook(steer_hook)
+
+        # Fast generation probe (20 tokens) - Batched
+        try:
             out = self.gb.model.generate(
-                **inputs,
+                input_ids=input_ids,
+                attention_mask=attention_mask,
                 max_new_tokens=20,
                 do_sample=True,
                 temperature=0.7,
                 pad_token_id=self.gb.tokenizer.eos_token_id
             )
-
+        finally:
             handle.remove()
-            text = self.gb.tokenizer.decode(out[0], skip_special_tokens=True)
+
+        # Evaluate candidates sequentially
+        for i, strength in enumerate(candidates):
+            text = self.gb.tokenizer.decode(out[i], skip_special_tokens=True)
 
             # Simple Repetition Check (compression ratio)
             # If "a b a b a b", ratio is high.
-            unique_tokens = len(set(text.split()))
-            total_tokens = len(text.split())
+            tokens = text.split()
+            unique_tokens = len(set(tokens))
+            total_tokens = len(tokens)
             ratio = unique_tokens / (total_tokens + 1e-5)
 
             print(f"    -> Str {strength}: Diversity Ratio {ratio:.2f}")
