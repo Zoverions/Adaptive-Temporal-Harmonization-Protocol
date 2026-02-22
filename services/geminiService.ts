@@ -11,9 +11,17 @@ if (!API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: API_KEY || "dummy_key" });
 
+// In-memory cache for concept explanations to avoid redundant API calls
+const explanationCache = new Map<string, string>();
+
 export const explainConcept = async (conceptTitle: string, conceptDescription: string): Promise<string> => {
   if (!API_KEY) {
     return "AI explanation is unavailable. Please ensure the API key is configured.";
+  }
+
+  const cacheKey = `${conceptTitle}:${conceptDescription}`;
+  if (explanationCache.has(cacheKey)) {
+    return explanationCache.get(cacheKey)!;
   }
 
   try {
@@ -33,7 +41,14 @@ export const explainConcept = async (conceptTitle: string, conceptDescription: s
       contents: prompt,
     });
     
-    return response.text() || "No explanation generated.";
+    const result = response.text() || "No explanation generated.";
+
+    // Only cache if we got a valid response
+    if (result !== "No explanation generated.") {
+      explanationCache.set(cacheKey, result);
+    }
+
+    return result;
 
   } catch (error) {
     console.error("Error generating explanation from Gemini API:", error);
