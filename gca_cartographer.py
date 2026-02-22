@@ -16,23 +16,55 @@ BASIS_PATH = "universal_basis.pt"
 class GCACartographer:
     def __init__(self):
         self.tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+        # Ensure padding token is set for batching
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
         self.model = AutoModelForCausalLM.from_pretrained(MODEL_ID).to(DEVICE)
 
-    def harvest_states(self, prompts):
+    def harvest_states(self, prompts, batch_size=8):
         harvested = []
+        # Store current batch mask for use in hook
+        current_mask = None
+
         def hook(module, input, output):
-            # Mean pool over sequence
-            state = torch.mean(output[0], dim=1).detach()
-            harvested.append(state)
+            # output[0] shape: (batch_size, seq_len, hidden_dim)
+            hidden_states = output[0]
+
+            if current_mask is not None:
+                # Use mask to ignore padding tokens
+                # mask shape: (batch_size, seq_len)
+                mask = current_mask.unsqueeze(-1).to(hidden_states.device) # (batch_size, seq_len, 1)
+
+                masked_hidden_states = hidden_states * mask
+                sum_states = torch.sum(masked_hidden_states, dim=1) # (batch_size, hidden_dim)
+
+                lengths = torch.sum(mask, dim=1) # (batch_size, 1)
+                # Avoid division by zero
+                lengths = torch.clamp(lengths, min=1e-9)
+
+                mean_states = sum_states / lengths
+            else:
+                # Fallback if no mask (should not happen with batch processing as implemented)
+                mean_states = torch.mean(hidden_states, dim=1)
+
+            harvested.append(mean_states.detach())
 
         handle = self.model.transformer.h[6].register_forward_hook(hook)  # Layer 6
 
-        for prompt in prompts:
-            inputs = self.tokenizer(prompt, return_tensors="pt").to(DEVICE)
-            with torch.no_grad():
-                self.model(**inputs)
+        try:
+            for i in range(0, len(prompts), batch_size):
+                batch_prompts = prompts[i : i + batch_size]
+                # Tokenize batch with padding
+                inputs = self.tokenizer(batch_prompts, return_tensors="pt", padding=True, truncation=True).to(DEVICE)
 
-        handle.remove()
+                # Update mask for hook
+                current_mask = inputs['attention_mask']
+
+                with torch.no_grad():
+                    self.model(**inputs)
+        finally:
+            handle.remove()
+
         return torch.cat(harvested, dim=0)  # (num_prompts, hidden_dim)
 
     def compute_basis(self, states, num_components=16):
