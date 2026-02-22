@@ -46,29 +46,24 @@ class GCAOptimizer:
         # Renamed from route_intent to route to match gca_agent_final.py
         prompt_vec = self.get_prompt_geometry(prompt).squeeze() # (16)
 
-        best_skill = "NONE"
-        best_score = 0.3 # Minimum confidence threshold
-
         print(f"[🧭] Routing Intent for: '{prompt[:30]}...'")
 
-        for name, data in self.mem.registry.items():
-            skill_coeffs = torch.tensor(data["vector_coeffs"], device=DEVICE)
+        # Optimized Vector Search
+        if self.mem.skill_matrix is not None and self.mem.skill_matrix.size(0) > 0:
+            # Matrix-Vector Multiplication: (N, 16) @ (16) -> (N)
+            scores = torch.mv(self.mem.skill_matrix, prompt_vec)
 
-            # Cosine Similarity
-            score = torch.dot(prompt_vec, skill_coeffs).item()
+            # Find best match
+            best_score_val, best_idx = torch.max(scores, dim=0)
+            best_score = best_score_val.item()
 
-            # print(f"    - {name}: {score:.4f}")
+            if best_score > 0.3:
+                best_skill = self.mem.skill_names[best_idx.item()]
+                print(f"    -> Matched '{best_skill}' (Confidence: {best_score:.2f})")
+                return best_skill
 
-            if score > best_score:
-                best_score = score
-                best_skill = name
-
-        if best_skill != "NONE":
-            print(f"    -> Matched '{best_skill}' (Confidence: {best_score:.2f})")
-        else:
-            print("    -> No clear skill match found.")
-
-        return best_skill
+        print("    -> No clear skill match found.")
+        return "NONE"
 
     def auto_tune(self, prompt, skill_vec):
         """
