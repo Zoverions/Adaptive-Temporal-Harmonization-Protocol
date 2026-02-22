@@ -9,6 +9,7 @@ The fully assembled Geometric Cognitive Architecture.
 5. Checks Ethics (Moral Kernel).
 """
 
+import re
 import torch
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -16,6 +17,11 @@ from gca_moral import MoralCalculator, Action, EntropyClass # From Phase 1
 # Assuming gca_glassbox functions are integrated here for simplicity
 
 # --- CONFIG ---
+# Intent Detection Regex (Pre-compiled for performance)
+RE_CODE = re.compile(r"def|function|code|python|script")
+RE_POETRY = re.compile(r"poem|verse|rhyme|sonnet")
+RE_MATH = re.compile(r"solve|equation|math|calculate")
+
 MODEL_ID = "gpt2"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BASIS_PATH = "universal_basis.pt"
@@ -50,11 +56,11 @@ class GCAPilot:
         In production, this uses a lightweight classifier (LeJEPA).
         """
         p = prompt.lower()
-        if any(x in p for x in ["def", "function", "code", "python", "script"]):
+        if RE_CODE.search(p):
             return "CODE"
-        if any(x in p for x in ["poem", "verse", "rhyme", "sonnet"]):
+        if RE_POETRY.search(p):
             return "POETRY"
-        if any(x in p for x in ["solve", "equation", "math", "calculate"]):
+        if RE_MATH.search(p):
             return "MATH"
         return "NONE"
 
