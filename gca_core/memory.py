@@ -30,6 +30,16 @@ class IsotropicMemory:
             with open(REGISTRY_PATH, 'r') as f:
                 self.registry = json.load(f)
 
+        # Pre-compute skill matrix and names for optimized routing
+        self.skill_names = []
+        self.skill_matrix = None
+
+        if self.registry:
+            self.skill_names = list(self.registry.keys())
+            vectors = [self.registry[name]["vector_coeffs"] for name in self.skill_names]
+            self.skill_matrix = torch.tensor(vectors, device=DEVICE) # (N, 16)
+        else:
+             self.skill_matrix = torch.empty((0, 16), device=DEVICE)
         self._initialized = True
 
     def get_skill_vector(self, skill_name):
