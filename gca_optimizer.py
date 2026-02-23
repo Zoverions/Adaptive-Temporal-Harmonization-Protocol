@@ -28,6 +28,14 @@ class GCAOptimizer:
         with open(REGISTRY_PATH, 'r') as f:
             self.registry = json.load(f)
 
+        # Pre-compute skill matrix for vectorized search
+        self.skill_names = list(self.registry.keys())
+        if self.skill_names:
+            vectors = [self.registry[name]["vector_coeffs"] for name in self.skill_names]
+            self.skill_matrix = torch.tensor(vectors, device=DEVICE)
+        else:
+            self.skill_matrix = None
+
     def get_prompt_geometry(self, prompt):
         """Projects the user prompt onto the Universal Basis."""
         inputs = self.tokenizer(prompt, return_tensors="pt").to(DEVICE)
@@ -60,15 +68,17 @@ class GCAOptimizer:
 
         print(f"[🧭] Routing Intent for: '{prompt[:30]}...'")
 
-        for name, data in self.registry.items():
-            skill_coeffs = torch.tensor(data["vector_coeffs"], device=DEVICE)
+        if self.skill_matrix is not None:
+            # Vectorized Cosine Similarity: (N_skills, Dim) @ (Dim) -> (N_skills)
+            scores = torch.mv(self.skill_matrix, prompt_vec)
 
-            # Cosine Similarity
-            score = torch.dot(prompt_vec, skill_coeffs).item()
+            # Find the best match
+            best_idx = torch.argmax(scores).item()
+            max_score = scores[best_idx].item()
 
-            if score > best_score:
-                best_score = score
-                best_skill = name
+            if max_score > best_score:
+                best_score = max_score
+                best_skill = self.skill_names[best_idx]
 
         if best_skill != "NONE":
             print(f"    -> Matched '{best_skill}' (Confidence: {best_score:.2f})")
@@ -89,25 +99,44 @@ class GCAOptimizer:
         inputs = self.tokenizer(prompt, return_tensors="pt").to(DEVICE)
         skill_vec = skill_vec.to(DEVICE)
 
-        for strength in candidates:
-            # Inject
-            def steer_hook(module, input, output):
-                output[0][:, :, :] += skill_vec * strength
-                return output
+        # Batch inputs
+        batch_size = len(candidates)
+        # Duplicate input_ids and attention_mask
+        input_ids = inputs["input_ids"].repeat(batch_size, 1)
+        attention_mask = inputs["attention_mask"].repeat(batch_size, 1)
 
-            handle = self.model.transformer.h[self.layer_idx].register_forward_hook(steer_hook)
+        # Prepare steering tensor
+        # candidates -> (batch, 1, 1)
+        strength_tensor = torch.tensor(candidates, device=DEVICE).view(batch_size, 1, 1)
+        # skill_vec -> (1, 1, hidden)
+        skill_vec_view = skill_vec.view(1, 1, -1)
+        # steering -> (batch, 1, hidden)
+        steering_tensor = skill_vec_view * strength_tensor
 
-            # Fast generation probe (20 tokens)
+        # Inject
+        def steer_hook(module, input, output):
+            # output[0]: (batch, seq, hidden)
+            # steering_tensor broadcasts over seq
+            output[0][:, :, :] += steering_tensor
+            return output
+
+        handle = self.model.transformer.h[self.layer_idx].register_forward_hook(steer_hook)
+
+        # Fast generation probe (20 tokens)
+        try:
             out = self.model.generate(
-                **inputs,
+                input_ids=input_ids,
+                attention_mask=attention_mask,
                 max_new_tokens=20,
                 do_sample=True,
                 temperature=0.7,
                 pad_token_id=self.tokenizer.eos_token_id
             )
-
+        finally:
             handle.remove()
-            text = self.tokenizer.decode(out[0], skip_special_tokens=True)
+
+        for i, strength in enumerate(candidates):
+            text = self.tokenizer.decode(out[i], skip_special_tokens=True)
 
             # Simple Repetition Check (compression ratio)
             # If "a b a b a b", ratio is high.
