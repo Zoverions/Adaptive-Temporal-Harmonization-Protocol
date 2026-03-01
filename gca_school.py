@@ -35,21 +35,34 @@ class GCASchool:
         print(f"\n[🎓] Learning Skill: '{name}' from {len(examples)} examples...")
 
         harvested_states = []
+        current_mask = None
 
         # 1. Harvest Activations
         def harvest_hook(module, input, output):
-            # Mean pool the sequence
             # output[0] shape: (batch, seq, dim)
-            state = torch.mean(output[0], dim=1).detach()
-            harvested_states.append(state)
+            hidden_states = output[0]
+
+            if current_mask is not None:
+                # Use mask to ignore padding tokens (masked mean pooling)
+                mask = current_mask.unsqueeze(-1).to(hidden_states.device)
+                masked_states = hidden_states * mask
+                sum_states = torch.sum(masked_states, dim=1)
+                lengths = torch.sum(mask, dim=1).clamp(min=1e-9)
+                mean_states = sum_states / lengths
+            else:
+                mean_states = torch.mean(hidden_states, dim=1)
+
+            harvested_states.append(mean_states.detach())
 
         layer = self.model.transformer.h[6] # Same layer as Pilot
         handle = layer.register_forward_hook(harvest_hook)
 
-        for ex in examples:
-            inputs = self.tokenizer(ex, return_tensors="pt", padding=True, truncation=True).to(DEVICE)
-            with torch.no_grad():
-                self.model(**inputs)
+        # Batch Inference
+        inputs = self.tokenizer(examples, return_tensors="pt", padding=True, truncation=True).to(DEVICE)
+        current_mask = inputs.get("attention_mask")
+
+        with torch.no_grad():
+            self.model(**inputs)
 
         handle.remove()
 
