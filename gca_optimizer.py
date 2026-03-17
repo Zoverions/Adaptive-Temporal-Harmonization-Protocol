@@ -140,8 +140,9 @@ class GCAOptimizer:
 
             # Simple Repetition Check (compression ratio)
             # If "a b a b a b", ratio is high.
-            unique_tokens = len(set(text.split()))
-            total_tokens = len(text.split())
+            tokens = text.split()
+            unique_tokens = len(set(tokens))
+            total_tokens = len(tokens)
             ratio = unique_tokens / (total_tokens + 1e-5)
 
             print(f"    -> Str {strength}: Diversity Ratio {ratio:.2f}")
