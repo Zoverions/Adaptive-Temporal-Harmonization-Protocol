@@ -43,7 +43,7 @@ class TestIsotropicMemoryOptimization(unittest.TestCase):
                 IsotropicMemory._instance = None
 
             # Patch open() and os.path.exists()
-            with patch("builtins.open", mock_open(read_data='{"test": {"vector_coeffs": [1.0]}}')) as mock_file:
+            with patch("builtins.open", mock_open(read_data='{"test": {"vector_coeffs": [1.0, 2.0]}}')) as mock_file:
                 with patch("os.path.exists", side_effect=side_effect):
 
                     instances = []

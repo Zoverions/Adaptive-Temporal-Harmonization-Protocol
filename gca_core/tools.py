@@ -6,6 +6,15 @@ from typing import Optional
 class ToolBox:
     def __init__(self):
         self.unsafe_mode = False # Hard lock
+        self._db_connections = {}
+
+    def __del__(self):
+        if hasattr(self, '_db_connections'):
+            for conn in self._db_connections.values():
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def execute_python(self, code: str) -> str:
         """Executes Python code in a sandboxed subprocess."""
@@ -30,13 +39,23 @@ class ToolBox:
             return "DB_ERROR: Destructive queries locked by ToolBox."
 
         try:
-            conn = sqlite3.connect(db_path)
+            if db_path not in self._db_connections:
+                # check_same_thread=False allows reusing across threads, which is useful
+                # if the ToolBox is invoked from different contexts.
+                self._db_connections[db_path] = sqlite3.connect(db_path, check_same_thread=False)
+
+            conn = self._db_connections[db_path]
             cursor = conn.cursor()
             cursor.execute(query)
             rows = cursor.fetchall()
-            conn.close()
+            conn.commit()  # To ensure DML operations persist if executed, even though original didn't explicitly commit (it closed, which rolls back uncommitted)
             return str(rows)
         except Exception as e:
+            if 'conn' in locals():
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             return f"DB Error: {str(e)}"
 
     def file_op(self, operation: str, path: str, content: str = "") -> str:
