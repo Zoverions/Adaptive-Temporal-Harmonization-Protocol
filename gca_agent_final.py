@@ -5,6 +5,9 @@ from gca_core.moral import MoralKernel, Action, EntropyClass
 from gca_core.tools import ToolBox
 import re
 
+# Pre-compiled regex for Python code block detection
+PYTHON_CODE_RE = re.compile(r"```python(.*?)```", re.DOTALL)
+
 def parse_tool_call(response):
     """
     Extracts code blocks or tool commands from the model's text output.
@@ -15,7 +18,7 @@ def parse_tool_call(response):
         return "SQL", response.strip()
 
     # Python Detection
-    code_match = re.search(r"```python(.*?)```", response, re.DOTALL)
+    code_match = PYTHON_CODE_RE.search(response)
     if code_match:
         return "PYTHON", code_match.group(1).strip()
 
