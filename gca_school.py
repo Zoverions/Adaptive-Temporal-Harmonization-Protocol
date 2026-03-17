@@ -35,19 +35,46 @@ class GCASchool:
         print(f"\n[🎓] Learning Skill: '{name}' from {len(examples)} examples...")
 
         harvested_states = []
+        current_mask = None
 
         # 1. Harvest Activations
         def harvest_hook(module, input, output):
-            # Mean pool the sequence
-            # output[0] shape: (batch, seq, dim)
-            state = torch.mean(output[0], dim=1).detach()
-            harvested_states.append(state)
+            # output might be a tuple or a tensor depending on how the model returns it
+            if isinstance(output, tuple):
+                hidden_states = output[0]
+            else:
+                hidden_states = output
+
+            if current_mask is not None:
+                # Use mask to ignore padding tokens
+                # mask shape: (batch_size, seq_len)
+                mask = current_mask.unsqueeze(-1).to(hidden_states.device) # (batch_size, seq_len, 1)
+
+                masked_hidden_states = hidden_states * mask
+                sum_states = torch.sum(masked_hidden_states, dim=1) # (batch_size, hidden_dim)
+
+                lengths = torch.sum(mask, dim=1).float() # (batch_size, 1)
+                # Avoid division by zero
+                lengths = torch.clamp(lengths, min=1e-9)
+
+                mean_states = sum_states / lengths
+            else:
+                # Fallback if no mask
+                mean_states = torch.mean(hidden_states, dim=1)
+
+            for i in range(mean_states.size(0)):
+                harvested_states.append(mean_states[i].unsqueeze(0).detach())
 
         layer = self.model.transformer.h[6] # Same layer as Pilot
         handle = layer.register_forward_hook(harvest_hook)
 
-        for ex in examples:
-            inputs = self.tokenizer(ex, return_tensors="pt", padding=True, truncation=True).to(DEVICE)
+        batch_size = 8
+        for i in range(0, len(examples), batch_size):
+            batch_ex = examples[i : i + batch_size]
+            inputs = self.tokenizer(batch_ex, return_tensors="pt", padding=True, truncation=True).to(DEVICE)
+
+            current_mask = inputs['attention_mask']
+
             with torch.no_grad():
                 self.model(**inputs)
 
