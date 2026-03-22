@@ -135,8 +135,11 @@ class GCAOptimizer:
         finally:
             handle.remove()
 
+        # Batch Decode for performance
+        decoded_texts = self.tokenizer.batch_decode(out, skip_special_tokens=True)
+
         for i, strength in enumerate(candidates):
-            text = self.tokenizer.decode(out[i], skip_special_tokens=True)
+            text = decoded_texts[i]
 
             # Simple Repetition Check (compression ratio)
             # If "a b a b a b", ratio is high.
