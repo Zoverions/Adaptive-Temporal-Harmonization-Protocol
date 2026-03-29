@@ -62,8 +62,7 @@ class GCASchool:
                 # Fallback if no mask
                 mean_states = torch.mean(hidden_states, dim=1)
 
-            for i in range(mean_states.size(0)):
-                harvested_states.append(mean_states[i].unsqueeze(0).detach())
+            harvested_states.append(mean_states.detach())
 
         layer = self.model.transformer.h[6] # Same layer as Pilot
         handle = layer.register_forward_hook(harvest_hook)
