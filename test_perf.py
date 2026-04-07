@@ -4,8 +4,9 @@ import textwrap
 text = "a b a b a b " * 1000
 
 def original():
-    unique_tokens = len(set(text.split()))
-    total_tokens = len(text.split())
+    tokens = text.split()
+    unique_tokens = len(set(tokens))
+    total_tokens = len(tokens)
     ratio = unique_tokens / (total_tokens + 1e-5)
     return ratio
 
