@@ -43,6 +43,9 @@ class IsotropicMemory:
         self._initialized = True
 
     def get_skill_vector(self, skill_name):
+        if skill_name in self.cache:
+            return self.cache[skill_name]
+
         if skill_name in self.registry:
             data = self.registry[skill_name]
             coeffs = torch.tensor(data["vector_coeffs"], device=DEVICE)
@@ -50,5 +53,7 @@ class IsotropicMemory:
             # Basis shape: (16, 768)
             # Coeffs shape: (16)
             # Result: (768)
-            return torch.matmul(coeffs, self.basis)
+            vec = torch.matmul(coeffs, self.basis)
+            self.cache[skill_name] = vec
+            return vec
         return None
