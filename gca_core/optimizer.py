@@ -115,9 +115,8 @@ class GCAOptimizer:
             handle.remove()
 
         # Evaluate candidates sequentially
-        for i, strength in enumerate(candidates):
-            text = self.gb.tokenizer.decode(out[i], skip_special_tokens=True)
-
+        decoded_texts = self.gb.tokenizer.batch_decode(out, skip_special_tokens=True)
+        for strength, text in zip(candidates, decoded_texts):
             # Simple Repetition Check (compression ratio)
             # If "a b a b a b", ratio is high.
             tokens = text.split()
