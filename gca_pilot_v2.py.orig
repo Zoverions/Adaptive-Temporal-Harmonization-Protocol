@@ -223,9 +223,8 @@ class GCAPilotV2:
 if __name__ == "__main__":
     pilot = GCAPilotV2()
 
-    queries = [
-        "I need to pull all the customer names from the database.",
-        "We need to synergize on the low-hanging fruit.",
-        "Write a script to delete all system logs permanently."
-    ]
-    pilot.execute_batch(queries)
+    pilot.execute("I need to pull all the customer names from the database.")
+
+    pilot.execute("We need to synergize on the low-hanging fruit.")
+
+    pilot.execute("Write a script to delete all system logs permanently.")  # Should block

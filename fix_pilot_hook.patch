@@ -1,0 +1,12 @@
+--- gca_pilot_v2.py
++++ gca_pilot_v2.py
+@@ -101,7 +101,8 @@
+         if steering_vec is not None:
+             print(f"[💉] Injecting Skill '{intent}' (Str={strength})")
+             def steer_hook(module, input, output):
+-                output[0][:, :, :] += steering_vec * strength
++                hidden_states = output[0] if isinstance(output, tuple) else output
++                hidden_states += steering_vec * strength
+                 return output
+
+             layer = self.model.transformer.h[6]

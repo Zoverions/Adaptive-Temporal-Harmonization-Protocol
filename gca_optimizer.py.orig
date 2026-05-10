@@ -38,19 +38,12 @@ class GCAOptimizer:
 
     def get_prompt_geometry(self, prompt):
         """Projects the user prompt onto the Universal Basis."""
-        is_list = isinstance(prompt, list)
-        prompts = prompt if is_list else [prompt]
-        self.tokenizer.pad_token = self.tokenizer.eos_token
-        inputs = self.tokenizer(prompts, return_tensors="pt", padding=True).to(DEVICE)
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(DEVICE)
 
         captured = []
         def hook(module, input, output):
             # Mean pool
-            hidden_states = output[0] if isinstance(output, tuple) else output
-            mask = inputs["attention_mask"].unsqueeze(-1)
-            sum_hidden = torch.sum(hidden_states * mask, dim=1)
-            lengths = torch.sum(mask, dim=1).clamp(min=1)
-            captured.append((sum_hidden / lengths).detach())
+            captured.append(torch.mean(output[0], dim=1).detach())
 
         handle = self.model.transformer.h[self.layer_idx].register_forward_hook(hook)
 
@@ -59,48 +52,40 @@ class GCAOptimizer:
 
         handle.remove()
 
-        # Project: State (Batch, 768) @ Basis_T (768, 16) -> (Batch, 16)
+        # Project: State (768) @ Basis_T (768, 16) -> (16)
         state = captured[0]
         coeffs = torch.matmul(state, self.basis.T)
-        norm_coeffs = torch.nn.functional.normalize(coeffs, p=2, dim=1) # Normalize
-        if not is_list:
-            return norm_coeffs[0]
-        return norm_coeffs
+        return torch.nn.functional.normalize(coeffs, p=2, dim=1) # Normalize
 
     def route_intent(self, prompt):
         """
         Finds the skill with the highest geometric overlap with the prompt.
         """
-        is_list = isinstance(prompt, list)
-        prompts = prompt if is_list else [prompt]
-        prompt_vecs = self.get_prompt_geometry(prompts)
+        prompt_vec = self.get_prompt_geometry(prompt).squeeze() # (16)
 
-        intents = []
-        for i, prompt_vec in enumerate(prompt_vecs):
-            best_skill = "NONE"
-            best_score = 0.3 # Minimum confidence threshold
+        best_skill = "NONE"
+        best_score = 0.3 # Minimum confidence threshold
 
-            print(f"[🧭] Routing Intent for: '{prompts[i][:30]}...'")
+        print(f"[🧭] Routing Intent for: '{prompt[:30]}...'")
 
-            if self.skill_matrix is not None:
-                # Vectorized Cosine Similarity: (N_skills, Dim) @ (Dim) -> (N_skills)
-                scores = torch.mv(self.skill_matrix, prompt_vec)
+        if self.skill_matrix is not None:
+            # Vectorized Cosine Similarity: (N_skills, Dim) @ (Dim) -> (N_skills)
+            scores = torch.mv(self.skill_matrix, prompt_vec)
 
-                # Find the best match
-                best_idx = torch.argmax(scores).item()
-                max_score = scores[best_idx].item()
+            # Find the best match
+            best_idx = torch.argmax(scores).item()
+            max_score = scores[best_idx].item()
 
-                if max_score > best_score:
-                    best_score = max_score
-                    best_skill = self.skill_names[best_idx]
+            if max_score > best_score:
+                best_score = max_score
+                best_skill = self.skill_names[best_idx]
 
-            if best_skill != "NONE":
-                print(f"    -> Matched '{best_skill}' (Confidence: {best_score:.2f})")
-            else:
-                print("    -> No clear skill match found.")
-            intents.append(best_skill)
+        if best_skill != "NONE":
+            print(f"    -> Matched '{best_skill}' (Confidence: {best_score:.2f})")
+        else:
+            print("    -> No clear skill match found.")
 
-        return intents if is_list else intents[0]
+        return best_skill
 
     def auto_tune_strength(self, prompt, skill_vec):
         """
@@ -132,8 +117,7 @@ class GCAOptimizer:
         def steer_hook(module, input, output):
             # output[0]: (batch, seq, hidden)
             # steering_tensor broadcasts over seq
-            hidden_states = output[0] if isinstance(output, tuple) else output
-            hidden_states[:, :, :] += steering_tensor
+            output[0][:, :, :] += steering_tensor
             return output
 
         handle = self.model.transformer.h[self.layer_idx].register_forward_hook(steer_hook)
