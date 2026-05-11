@@ -68,16 +68,21 @@ class GCACartographer:
         return torch.cat(harvested, dim=0)  # (num_prompts, hidden_dim)
 
     def compute_basis(self, states, num_components=16):
+        import os
+        if os.path.exists(BASIS_PATH):
+            print(f"[🗺️] Found existing basis at {BASIS_PATH}, skipping computation...")
+            return
+
         # Center states
         states -= torch.mean(states, dim=0)
 
-        # SVD: U S Vh
+        # Fast Low-Rank SVD: U S V
         # We want principal components in hidden_dim space.
-        # svd(states) gives Vh where rows are the components.
-        U, S, Vh = svd(states, full_matrices=False)
+        # torch.svd_lowrank gives V where columns are the components.
+        U, S, V = torch.svd_lowrank(states, q=num_components)
 
-        # Top components as basis vectors
-        basis = Vh[:num_components]  # (num_components, hidden_dim)
+        # Transpose V to get components as rows and select top components
+        basis = V.T[:num_components]  # (num_components, hidden_dim)
 
         torch.save(basis, BASIS_PATH)
         print(f"[🗺️] Basis saved to {BASIS_PATH}")
