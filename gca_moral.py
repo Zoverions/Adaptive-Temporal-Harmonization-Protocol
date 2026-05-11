@@ -6,6 +6,7 @@ A geometric moral calculator for actions.
 
 from enum import Enum
 import math
+import functools
 
 class EntropyClass(Enum):
     REVERSIBLE = 1
@@ -22,10 +23,20 @@ class Action:
         self.agents_affected = agents_affected  # int
         self.entropy_class = entropy_class
 
+    def __hash__(self):
+        return hash((self.type, self.description, self.harm, self.utility, self.uncertainty, self.scale, self.agents_affected, self.entropy_class))
+
+    def __eq__(self, other):
+        if not isinstance(other, Action):
+            return NotImplemented
+        return (self.type, self.description, self.harm, self.utility, self.uncertainty, self.scale, self.agents_affected, self.entropy_class) == \
+               (other.type, other.description, other.harm, other.utility, other.uncertainty, other.scale, other.agents_affected, other.entropy_class)
+
 class MoralCalculator:
     def __init__(self):
         self.threshold = 0.5  # Adjustable moral threshold
 
+    @functools.lru_cache(maxsize=1024)
     def calculate_moral_vector(self, action):
         # Simple geometric representation (can be expanded)
         magnitude = math.sqrt(action.harm**2 + (1 - action.utility)**2 + action.uncertainty**2)
