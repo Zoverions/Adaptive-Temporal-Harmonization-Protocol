@@ -34,3 +34,18 @@ jobs:
         run: npm run build
       - name: Run repository tests when defined
         run: npm test --if-present
+      - name: Audit locked dependency graph
+        shell: bash
+        run: |
+          set +e
+          echo '=== Production dependency audit (high+) ==='
+          npm audit --omit=dev --audit-level=high
+          production_status=$?
+          echo '=== Full locked graph audit (high+) ==='
+          npm audit --audit-level=high
+          full_status=$?
+          echo "production_audit_status=${production_status}"
+          echo "full_audit_status=${full_status}"
+          if (( production_status != 0 || full_status != 0 )); then
+            exit 1
+          fi
