@@ -5,11 +5,15 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@google/genai', () => ({
-  GoogleGenAI: vi.fn().mockImplementation(() => ({
-    models: {
-      generateContent: mocks.generateContent,
-    },
-  })),
+  GoogleGenAI: class MockGoogleGenAI {
+    models: { generateContent: typeof mocks.generateContent };
+
+    constructor() {
+      this.models = {
+        generateContent: mocks.generateContent,
+      };
+    }
+  },
 }));
 
 const originalApiKey = process.env.API_KEY;
